@@ -1,0 +1,324 @@
+---
+title: "Proyecto 3 Data Mining"
+author: "Diego Aguilar Dañobeitía"
+date: "25/6/2021"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Cargar las librerías
+
+Primero, se procede a cargar las librerías necesarias:
+
+```{r}
+
+library(tidyverse)
+
+library(pROC)
+
+library(dplyr)
+
+library(aplpack)
+
+```
+
+## Cargar los datos
+
+Luego, una de las primeras cosas que se tiene que hacer para iniciar el análisis de los datos es cargar el archivo que los contiene, lo que se guardará en la variable "data":
+
+```{r}
+
+setwd("D:/Documentos/Files & Stuff/U/Data Mining/Proyecto-3")
+
+data <- readRDS("endurance.rds")
+
+glimpse(data)
+
+```
+
+Por lo que se puede observar, existen 167615 datos con 16 atributos.
+
+Cabe destacar además que estos datos corresponden a mediciones de actividades deportivas de deportistas de resistencia, hechas a través de dispositivos digitales.
+
+
+## Pre procesamiento de los datos
+
+Se procede a limpiar los datos en base a los objetivos: como objetivo primario, diferenciar las actividades que son llevadas a cabo a pie versus las que son llevadas a cabo en bicicleta mediante las demás variables; como objetivo secundario, determinar las actividades que fueron registradas erróneamente por el usuario.
+
+
+### Eliminación de entidades duplicadas
+
+Primero, se procede a eliminar entidades que poseen los mismos valores para cada variable entre sí:
+
+```{r}
+
+dataunique <- unique(data)
+
+glimpse(dataunique)
+
+```
+
+Se observa que no disminuyó el número de entidades, por lo que no existen entidades duplicadas.
+
+### Eliminación de entidades con valores faltantes
+
+Luego se necesita limpiar las entidades que tienen valores faltantes (NA) de los datos:
+
+```{r}
+
+dataclean <- na.omit(dataunique)
+
+glimpse(dataclean)
+
+```
+
+Se observa que ahora existen 151990 entidades, un poco menos que las anteriores.
+
+### Reducción de dimensionalidad
+
+Después, según lo anterior, las únicas variables que se llegarían a usar son las variables de "type", "distance", y "average_speed".
+
+```{r}
+
+datadim <- dataclean[c("type", "distance", "average_speed")]
+
+glimpse(datadim)
+
+```
+
+Se observa que ahora se cuenta con los mismos 151990 datos, pero ahora con sólo 3 variables, que son las que se necesitan.
+
+### Revisión de estados de la variable "type"
+
+Luego, se van a revisar los valores o estados posibles de esta variable.
+
+```{r}
+
+typevalues <- unique(datadim$type)
+
+print(typevalues)
+
+```
+
+Se observa que existen los estados de "Ride", "Run", "Walk", "Hike" y "EBikeRide".
+
+### Eliminación de los valores "0" de las variables
+
+En este caso, se considera que las mediciones con valores iguales a 0 no son mediciones válidas, por lo que se eliminarán:
+
+```{r}
+
+datanozero <- datadim[apply(datadim, 1, function(row) all(row != 0 )),]
+
+glimpse(datanozero)
+
+```
+
+### Reducción de estados de la variable "type"
+
+Ahora, se van a agrupar los valores de esta variable en 2 valores posibles y distintos (variable binaria): "0", que incluye a los valores correspondientes a las actividades a pie; "Walk", "Run" y "Hike"; y "1", que inclutye a los valores correspondientes a las actividades en bicicleta: "Ride" y "EBikeRide".
+
+```{r}
+
+datadim$type[datadim$type == "Walk"] <- 0
+
+datadim$type[datadim$type == "Run"] <- 0
+
+datadim$type[datadim$type == "Hike"] <- 0
+
+datadim$type[datadim$type == "Ride"] <- 1
+
+datadim$type[datadim$type == "EBikeRide"] <- 1
+
+datadim$type <- as.integer(datadim$type)
+
+typevalues2 <- unique(datadim$type)
+
+print(typevalues2)
+
+```
+
+### Conversión de la variable "average_speed" a double
+
+Luego, se va a convertir dicha variable del tipo character al tipo double.
+
+```{r}
+
+datadim$average_speed <- as.double(datadim$average_speed)
+
+glimpse(datadim)
+
+```
+
+### Sampleo
+
+Por último, para esta fase, se va a realizar un sampleo de los datos para hacer posible los procedimientos de análsis posteriores sin problemas:
+
+```{r}
+
+set.seed(1)
+
+datared <- sample_n(datadim, 10000)
+
+glimpse(datared)
+
+```
+
+
+## Análisis de los datos
+
+Ya que se han limpiado y ordenado los datos de forma correcta, se procede al análisis de estos para resolver la problemática planteada en este caso. 
+
+### Objetivo 1
+
+Para distinguir si una actividad fue realizada a pie o en bicicleta, se va a realizar un análisis de clasificación mediante una regresión logística.
+
+#### Regresión logística utilizando "distance"
+
+Se realizará un primer modelo mediante una función logística simple, utilizando la variable "distance":
+
+```{r}
+
+logisticmodel <- glm(type ~ distance, datared, family = "binomial")
+
+summary(logisticmodel)
+
+```
+
+Luego, se va a verificar la bondad del modelo para ver si su poder predictivo es significativo:
+
+```{r}
+
+bond <- predict(logisticmodel, type = c("response"))
+
+datalogdistance <- datared
+
+datalogdistance$bond <- bond
+
+curva_roc <- roc(type ~ bond, data = datalogdistance)
+
+plot(curva_roc)
+
+auc(curva_roc)
+
+```
+
+Se observa que el área bajo la curva es de 0.7719, por lo que se va a realizar una regresión logística con la variable "average_speed" para ver si se obtiene un mejor modelo.
+
+#### Regresión logística utilizando "average_speed"
+
+```{r}
+
+logisticmodel2 <- glm(type ~ average_speed, datared, family = "binomial")
+
+summary(logisticmodel2)
+
+bond2 <- predict(logisticmodel2, type = c("response"))
+
+datalogspeed <- datared
+
+datalogspeed$bond2 <- bond2
+
+curva_roc2 <- roc(type ~ bond2, data = datalogspeed)
+
+plot(curva_roc2)
+
+auc(curva_roc2)
+
+```
+
+Se observa que el área bajo la curva es de 0.8548, mejor que el modelo anterior.
+
+#### Regresión logística utilizando "distance" y "average_speed"
+
+Ahora se va a realizar una regresión logística con ambas variables señaladas:
+
+```{r}
+
+logisticmodelmulti <- glm(type ~ ., datared, family = "binomial")
+
+summary(logisticmodelmulti)
+
+bondmulti <- predict(logisticmodelmulti, type = c("response"))
+
+datalogmulti <- datared
+
+datalogmulti$bondmulti <- bondmulti
+
+curva_rocmulti <- roc(type ~ bondmulti, data = datalogmulti)
+
+plot(curva_rocmulti)
+
+auc(curva_rocmulti)
+
+```
+
+Se observa que el área bajo la curva es más alta que ambas regresiones anteriores (0.8761), por lo que las variables "distance" y "average_speed" son mejores para el modelo en su conjunto.
+
+### Objetivo 2
+
+Para identificar las variables que fueron registradas erróneamente por los usuarios, se van a determinar los valores atípicos para subsets de datos según si las actividades fueron registradas a pie o en bicicleta, para la variable "average_speed", que por si sola es un mejor predictor que la variable "distance". Una vez determinados estos valores, se van a separar del resto y se van a imprimir en pantalla.
+
+#### Separación de actividades en distintos dataframes según tipo
+
+Se procederá a separar los datos en dos dataframes para analizarlos separadamente según el tipo ingresado por el usuario.
+
+```{r}
+
+datafoot <- datared %>% filter(type == 0)
+
+databike <- datared %>% filter(type == 1)
+
+glimpse(datafoot)
+
+glimpse(databike)
+
+```
+
+#### Muestra gráfica de la existencia de valores atípicos
+
+```{r}
+
+boxplot(datafoot$average_speed)
+
+```
+
+Se ve que las actividades a pie presentan varios valores atípicos en los valores mayores, que por conclusión corresponderían a actividades en bicicleta registradas erróneamente.
+
+```{r}
+
+boxplot(databike$average_speed)
+
+```
+
+Se observa que los valores atípicos aquí se encuentran en los valores mayores también, pero estos, lógicamente, no pueden ser actividades a pie mal registradas (las que deberían tener menor velocidad promedio), por lo que sólo se asumirán como variables atípicas bien registradas.
+
+#### Determinación de actividades mal ingresadas
+
+##### Actividades erróneamente ingresadas como a pie
+
+Las actividades que erróneamente fueron ingresadas como realizadas a pie (que en realidad fueron a bicicleta) probablemente corresponden a las que tienen las siguientes mediciones:
+
+```{r}
+
+footout <- boxplot.stats(datafoot$average_speed)$out
+
+footoutdf <- as.data.frame(footout)
+
+footoutupper <- footoutdf %>% filter(footoutdf$footout > median(footoutdf$footout))
+
+print(footoutupper)
+
+```
+
+##### Actividades erróneamente ingresadas como en bicicleta
+
+Debido a la carencia de valores atípicos en el extremo de los valores menores, con el modelo actual no se pueden determinar actividades ingresadas como realizadas en bicicleta  mientras fueron realizadas a pie. Esto se puede explicar a que es posible ir a una velocidad promedio similar en bicicleta a la velocidad promedio de las actividades a pie, pero la situación contraria es muy poco probable.
+
+## Conclusiones
+
+Para predecir si una actividad corresponde a una realizada a pie o en bicicleta, tomando variables aparte de la variable "type", se puede utilizar tanto la variable "distance" como la variable "average_speed", obteniendo mejores resultados mediante esta última. Al tratar de utilizar ambas variables, se obtiene un poder predictivo levemente superior, por lo que es mejor utilizarlas en conjunto al momento de predecir el tipo de una actividad sin conocer directamente el tipo ingresado.
+Dado que las variables señaladas anteriormente son buenos predictores de si una actividad pertenece a un tipo u otro, se utiliza la mejor predictora de ambas para determinar valores atípicos. Estos podrían corresponder a valores mal ingresados en el caso de los registros a pie, pero no así para los registros en bicicleta. La falta de capacidad para predecir valores mal ingresados en bicicleta puede venir dado ya sea por la naturaleza del problema, o por el modelo utilizado.
